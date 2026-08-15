@@ -13,7 +13,29 @@
 if (!defined('ABS_PATH')) {
     exit('ABS_PATH is not loaded. Direct access is not allowed.');
 }
+$adminTotpPending = \mindstellar\security\AdminTotp::pending();
 ?>
+<?php if ($adminTotpPending) { ?>
+<form name="loginform" id="loginform" action="<?php echo osc_admin_base_url(true); ?>" method="post">
+    <input type="hidden" name="page" value="login"/>
+    <input type="hidden" name="action" value="2fa_post"/>
+    <p class="mb-3"><?php _e('New IP — enter the code from your authenticator app (or a backup code).'); ?></p>
+    <div class="form-floating mb-3">
+        <input type="text" name="code" class="form-control" id="user_2fa" value=""
+               autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false"
+               maxlength="8" placeholder="000000" required>
+        <label for="user_2fa"><?php _e('Authentication code'); ?></label>
+    </div>
+    <button class="w-100 btn btn-lg btn-primary" type="submit"><?php echo osc_esc_html(__('Verify')); ?></button>
+    <div class="mt-3 mb-3">
+        <a href="<?php echo osc_admin_base_url(true); ?>?page=login&amp;action=2fa_cancel"><?php _e('Cancel'); ?></a>
+    </div>
+    <div class="mt-5 mb-3"><a href="<?php echo osc_base_url(); ?>"
+                              title="<?php echo osc_esc_html(sprintf(__('Back to %s'), osc_page_title())); ?>">
+            <i class="text-dark bi bi-arrow-left"></i> <?php printf(__('Back to %s'), osc_page_title()); ?></a>
+    </div>
+</form>
+<?php } else { ?>
 <form name="loginform" id="loginform" action="<?php echo osc_admin_base_url(true); ?>" method="post">
     <input type="hidden" name="page" value="login"/>
     <input type="hidden" name="action" value="login_post"/>
@@ -71,3 +93,4 @@ if (!defined('ABS_PATH')) {
             <i class="text-dark bi bi-arrow-left"></i> <?php printf(__('Back to %s'), osc_page_title()); ?></a>
     </div>
 </form>
+<?php } ?>

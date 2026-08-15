@@ -335,6 +335,16 @@ function osc_is_admin_user_logged_in()
                 $admin['s_password']
             )
         ) {
+            if (\mindstellar\security\AdminTotp::needsChallenge($admin['pk_i_id'])) {
+                \mindstellar\security\AdminTotp::beginPending($admin, array(
+                    'locale'      => Cookie::newInstance()->get_value('oc_adminLocale'),
+                    'remember'    => 0,
+                    'redirect'    => '',
+                    'from_cookie' => 1,
+                ));
+
+                return false;
+            }
             Session::newInstance()->_set('adminId', $admin['pk_i_id']);
             Session::newInstance()->_set('adminUserName', $admin['s_username']);
             Session::newInstance()->_set('adminName', $admin['s_name']);

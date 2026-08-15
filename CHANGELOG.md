@@ -59,6 +59,11 @@ most of them do not use — so it now goes in the same place as any other third-
   `after_delete_category` to pair with the existing `delete_category`. Each `before_` hook
   runs before the delete's transaction opens and each `after_` hook only once it has
   committed, so a plugin's own database work is never rolled back with a failed delete.
+- Optional authenticator-app 2FA for administrators. A code is required only when
+  the sign-in IP differs from the last verified address; the same IP signs in with
+  password alone. Enrollment is on Your Profile, with backup codes shown once.
+  Remember-me from a new IP takes the same path. Changing the password clears the
+  stored IP so the next sign-in must 2FA.
 
 ### Breaking
 

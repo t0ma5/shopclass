@@ -97,6 +97,8 @@ jobs:
       # run no build step), so the autoloader is present straight from checkout.
       - name: Params typed accessors
         run: php tests/params-typed-accessors.php
+      - name: TOTP RFC 6238
+        run: php tests/security-totp.php
       - name: Rewrite param decode
         run: php tests/rewrite-param-decode.php
       - name: Rewrite route match

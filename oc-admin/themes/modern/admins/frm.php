@@ -140,5 +140,69 @@ osc_current_admin_theme_path('parts/header.php'); ?>
             </fieldset>
         </form>
     </div>
+    <?php if ($aux['admin_edit'] && isset($admin['pk_i_id']) && (int)$admin['pk_i_id'] === (int)osc_logged_admin_id()) {
+        $totpOn     = \mindstellar\security\AdminTotp::isEnabled($admin['pk_i_id']);
+        $totpEnroll = (string)Session::newInstance()->_get('admin_totp_enroll_secret');
+        $totpBackup = (string)Session::newInstance()->_get('admin_totp_backup_once');
+        if ($totpBackup !== '') {
+            Session::newInstance()->_drop('admin_totp_backup_once');
+        }
+        $totpRow = \mindstellar\security\AdminTotp::load($admin['pk_i_id']);
+        $totpIp  = ($totpRow && !empty($totpRow['s_last_ip'])) ? $totpRow['s_last_ip'] : '';
+        ?>
+    <div class="settings-user" style="margin-top:2rem;">
+        <h2 class="render-title"><?php _e('Two-factor authentication'); ?></h2>
+        <p><?php _e('When this is on, a new IP address must confirm a code from your authenticator app. The same IP can sign in with password only.'); ?></p>
+        <?php if ($totpBackup !== '') { ?>
+            <div class="flashmessage flashmessage-ok" style="display:block;">
+                <p><strong><?php _e('Backup codes (save these now)'); ?></strong></p>
+                <p style="font-family:monospace;letter-spacing:.08em;"><?php echo osc_esc_html($totpBackup); ?></p>
+            </div>
+        <?php } ?>
+        <?php if ($totpEnroll !== '' && !$totpOn) {
+            $totpUri = \mindstellar\security\AdminTotp::otpauthUri($admin['s_username'], $totpEnroll);
+            ?>
+            <p><?php _e('Add this account in your authenticator app, then enter the 6-digit code to confirm.'); ?></p>
+            <p><?php _e('Key:'); ?> <code><?php echo osc_esc_html($totpEnroll); ?></code></p>
+            <p><a href="<?php echo osc_esc_html($totpUri); ?>"><?php _e('Open in authenticator'); ?></a></p>
+            <form action="<?php echo osc_admin_base_url(true); ?>" method="post">
+                <input type="hidden" name="page" value="admins"/>
+                <input type="hidden" name="action" value="2fa_confirm"/>
+                <div class="form-horizontal">
+                    <div class="form-row">
+                        <div class="form-label"><?php _e('Authenticator code'); ?></div>
+                        <div class="form-controls">
+                            <input type="text" name="code" value="" maxlength="6" autocomplete="one-time-code" required/>
+                            <button type="submit" class="btn btn-primary"><?php echo osc_esc_html(__('Confirm and enable')); ?></button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        <?php } elseif ($totpOn) { ?>
+            <p><?php _e('Status: on'); ?><?php if ($totpIp !== '') {
+                echo ' — ' . osc_esc_html(sprintf(__('last verified IP: %s'), $totpIp));
+            } ?></p>
+            <form action="<?php echo osc_admin_base_url(true); ?>" method="post">
+                <input type="hidden" name="page" value="admins"/>
+                <input type="hidden" name="action" value="2fa_disable"/>
+                <div class="form-horizontal">
+                    <div class="form-row">
+                        <div class="form-label"><?php _e('Code to disable'); ?></div>
+                        <div class="form-controls">
+                            <input type="text" name="code" value="" maxlength="8" autocomplete="one-time-code" required/>
+                            <button type="submit" class="btn"><?php echo osc_esc_html(__('Turn off 2FA')); ?></button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        <?php } else { ?>
+            <form action="<?php echo osc_admin_base_url(true); ?>" method="post">
+                <input type="hidden" name="page" value="admins"/>
+                <input type="hidden" name="action" value="2fa_start"/>
+                <button type="submit" class="btn btn-primary"><?php echo osc_esc_html(__('Set up authenticator')); ?></button>
+            </form>
+        <?php } ?>
+    </div>
+    <?php } ?>
     <!-- /add user form -->
 <?php osc_current_admin_theme_path('parts/footer.php'); ?>

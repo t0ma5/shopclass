@@ -137,6 +137,19 @@ CREATE TABLE /*TABLE_PREFIX*/t_admin (
         UNIQUE KEY (s_email)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET 'utf8mb4' COLLATE 'utf8mb4_general_ci';
 
+CREATE TABLE /*TABLE_PREFIX*/t_admin_2fa (
+    fk_i_admin_id INT UNSIGNED NOT NULL,
+    s_secret VARCHAR(255) NOT NULL DEFAULT '',
+    b_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    s_last_ip VARCHAR(45) NOT NULL DEFAULT '',
+    s_backup_codes TEXT NULL,
+    dt_enrolled DATETIME NULL,
+    dt_last_verify DATETIME NULL,
+
+        PRIMARY KEY (fk_i_admin_id),
+        FOREIGN KEY (fk_i_admin_id) REFERENCES /*TABLE_PREFIX*/t_admin (pk_i_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET 'utf8mb4' COLLATE 'utf8mb4_general_ci';
+
 CREATE TABLE /*TABLE_PREFIX*/t_user (
     pk_i_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     dt_reg_date DATETIME NOT NULL,

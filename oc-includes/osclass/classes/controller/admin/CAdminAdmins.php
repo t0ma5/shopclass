@@ -29,8 +29,9 @@ class CAdminAdmins extends AdminSecBaseModel
         parent::__construct();
 
         if ($this->isModerator()) {
-            if (($this->action !== 'edit' && $this->action !== 'edit_post')
-                || (Params::getParam('id') != ''
+            $ownTotp = in_array($this->action, array('2fa_start', '2fa_confirm', '2fa_disable'), true);
+            if ((!$ownTotp && $this->action !== 'edit' && $this->action !== 'edit_post')
+                || (!$ownTotp && Params::getParam('id') != ''
                     && Params::getParam('id') != osc_logged_admin_id())
             ) {
                 osc_add_flash_error_message(_m("You don't have enough permissions"), 'admin');
@@ -157,6 +158,88 @@ class CAdminAdmins extends AdminSecBaseModel
                 $this->_exportVariableToView('admin', $adminEdit);
                 $this->doView('admins/frm.php');
                 break;
+            case ('2fa_start'):
+                if (defined('DEMO')) {
+                    osc_add_flash_warning_message(_m("This action can't be done because it's a demo site"), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                }
+                osc_csrf_check();
+                $loggedId = (int)osc_logged_admin_id();
+                if ($loggedId <= 0) {
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login');
+                }
+                Session::newInstance()->_set(
+                    'admin_totp_enroll_secret',
+                    \mindstellar\security\Totp::randomSecret()
+                );
+                $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                break;
+            case ('2fa_confirm'):
+                if (defined('DEMO')) {
+                    osc_add_flash_warning_message(_m("This action can't be done because it's a demo site"), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                }
+                osc_csrf_check();
+                $loggedId = (int)osc_logged_admin_id();
+                if ($loggedId <= 0) {
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login');
+                }
+                $secret = (string)Session::newInstance()->_get('admin_totp_enroll_secret');
+                $code   = Params::getParam('code', false, false);
+                if ($secret === '' || !\mindstellar\security\Totp::verify($secret, $code)) {
+                    osc_add_flash_error_message(
+                        _m('That code is not valid. Enter the key again and retry.'),
+                        'admin'
+                    );
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                }
+                $backup = \mindstellar\security\AdminTotp::generateBackupCodes();
+                $enc    = \mindstellar\security\AdminTotp::encrypt($secret);
+                if ($enc === '') {
+                    osc_add_flash_error_message(_m('Could not save two-factor authentication.'), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                }
+                \mindstellar\security\AdminTotp::save($loggedId, array(
+                    's_secret'       => $enc,
+                    'b_enabled'      => 1,
+                    's_last_ip'      => \mindstellar\security\AdminTotp::currentIp(),
+                    's_backup_codes' => \mindstellar\security\AdminTotp::hashBackupCodes($backup),
+                    'dt_enrolled'    => date('Y-m-d H:i:s'),
+                    'dt_last_verify' => date('Y-m-d H:i:s'),
+                ));
+                Session::newInstance()->_drop('admin_totp_enroll_secret');
+                Session::newInstance()->_set('admin_totp_backup_once', implode(' ', $backup));
+                osc_add_flash_ok_message(
+                    _m('Two-factor authentication is on. Save your backup codes now — they will not be shown again.'),
+                    'admin'
+                );
+                $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                break;
+            case ('2fa_disable'):
+                if (defined('DEMO')) {
+                    osc_add_flash_warning_message(_m("This action can't be done because it's a demo site"), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                }
+                osc_csrf_check();
+                $loggedId = (int)osc_logged_admin_id();
+                if ($loggedId <= 0) {
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login');
+                }
+                $code = Params::getParam('code', false, false);
+                if (!\mindstellar\security\AdminTotp::verifyAny($loggedId, $code)) {
+                    osc_add_flash_error_message(_m('That code is not valid.'), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                }
+                \mindstellar\security\AdminTotp::save($loggedId, array(
+                    's_secret'       => '',
+                    'b_enabled'      => 0,
+                    's_last_ip'      => '',
+                    's_backup_codes' => '',
+                ));
+                Session::newInstance()->_drop('admin_totp_enroll_secret');
+                osc_add_flash_ok_message(_m('Two-factor authentication is off.'), 'admin');
+                $this->redirectTo(osc_admin_base_url(true) . '?page=admins&action=edit');
+                break;
             case ('edit_post'):
                 if (defined('DEMO')) {
                     osc_add_flash_warning_message(_m("This action can't be done because it's a demo site"), 'admin');
@@ -250,6 +333,9 @@ class CAdminAdmins extends AdminSecBaseModel
                 $array['s_email']    = $sEmail;
 
                 $iUpdated = $this->adminManager->update($array, $conditions);
+                if (isset($array['s_password'])) {
+                    \mindstellar\security\AdminTotp::clearLastIp((int)$adminId);
+                }
                 osc_run_hook('admin_edit_completed', $adminId, $iUpdated);
 
                 if ($iUpdated > 0) {

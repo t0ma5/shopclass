@@ -80,6 +80,19 @@ class AdminSecBaseModel extends SecBaseModel
 
     public function logout()
     {
+        // A remember-me restore that still owes a TOTP calls isLogged() false, and
+        // SecBaseModel then calls logout(). Destroying the session there would drop
+        // the pending challenge that osc_is_admin_user_logged_in() just recorded.
+        if (\mindstellar\security\AdminTotp::pending() !== null) {
+            Session::newInstance()->_drop('adminId');
+            Session::newInstance()->_drop('adminUserName');
+            Session::newInstance()->_drop('adminName');
+            Session::newInstance()->_drop('adminEmail');
+            Session::newInstance()->_drop('adminLocale');
+
+            return;
+        }
+
         //destroying session
         $locale = Session::newInstance()->_get('oc_adminLocale');
         Session::newInstance()->session_destroy();
@@ -121,7 +134,11 @@ class AdminSecBaseModel extends SecBaseModel
             osc_base_url()
             . Params::getRequestURI(false, false, false)
         );
-        header('Location: ' . osc_admin_base_url(true) . '?page=login');
+        $login = osc_admin_base_url(true) . '?page=login';
+        if (\mindstellar\security\AdminTotp::pending() !== null) {
+            $login .= '&action=2fa';
+        }
+        header('Location: ' . $login);
         exit;
     }
 }

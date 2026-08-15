@@ -109,41 +109,77 @@ class CAdminLogin extends AdminBaseModel
 
                 \mindstellar\security\LoginThrottle::clear('admin', Params::getParam('user'));
 
-                $locale          = Params::getParam('locale');
-                $is_valid_locale = osc_validate_locale($locale, true);
-                if (Params::getParam('remember')) {
-                    Cookie::newInstance()->set_expires(osc_time_cookie());
-                    Cookie::newInstance()->push('oc_adminId', $admin['pk_i_id']);
-                    Cookie::newInstance()->push(
-                        'oc_adminSecret',
-                        \mindstellar\security\RememberMe::issue(
-                            'admin',
-                            $admin['pk_i_id'],
-                            $admin['s_password'],
-                            osc_time_cookie()
-                        )
-                    );
-                    if ($is_valid_locale === true) {
-                        Cookie::newInstance()->push('oc_adminLocale', Params::getParam('locale'));
-                    } else {
-                        Cookie::newInstance()->push('oc_adminLocale', osc_admin_language());
-                    }
-                    Cookie::newInstance()->set();
+                $locale = Params::getParam('locale');
+                if (\mindstellar\security\AdminTotp::needsChallenge($admin['pk_i_id'])) {
+                    \mindstellar\security\AdminTotp::beginPending($admin, array(
+                        'locale'      => $locale,
+                        'remember'    => Params::getParam('remember') ? 1 : 0,
+                        'redirect'    => $url_redirect,
+                        'from_cookie' => 0,
+                    ));
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login&action=2fa');
                 }
 
-                // we are logged in... let's go!
-                Session::newInstance()->_set('adminId', $admin['pk_i_id']);
-                Session::newInstance()->_set('adminUserName', $admin['s_username']);
-                Session::newInstance()->_set('adminName', $admin['s_name']);
-                Session::newInstance()->_set('adminEmail', $admin['s_email']);
-                if ($is_valid_locale === true) {
-                    Session::newInstance()->_set('adminLocale', $locale);
-                } else {
-                    Session::newInstance()->_set('adminLocale', osc_admin_language());
-                }
-                osc_run_hook('login_admin', $admin);
-
+                \mindstellar\security\AdminTotp::establishSession(
+                    $admin,
+                    $locale,
+                    (bool)Params::getParam('remember')
+                );
                 $this->redirectTo($url_redirect);
+                break;
+            case ('2fa'):
+                if (\mindstellar\security\AdminTotp::pending() === null) {
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login');
+                }
+                View::newInstance()->_exportVariableToView(
+                    'login_admin_page_title',
+                    osc_page_title() . ' &raquo;' . __('Two-factor authentication')
+                );
+                View::newInstance()->_exportVariableToView('login_admin_form', 'gui/login.php');
+                $this->doView();
+                break;
+            case ('2fa_post'):
+                osc_csrf_check();
+                $pending = \mindstellar\security\AdminTotp::pending();
+                if ($pending === null) {
+                    osc_add_flash_error_message(_m('Your verification session expired. Please log in again.'), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login');
+                }
+
+                $throttle = \mindstellar\security\LoginThrottle::evaluate(
+                    'admin-2fa',
+                    'admin-' . $pending['id'],
+                    false
+                );
+                if ($throttle['status'] === \mindstellar\security\LoginThrottle::BLOCKED) {
+                    osc_add_flash_error_message(osc_login_throttle_message($throttle['retry_after']), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login&action=2fa');
+                }
+
+                $code = Params::getParam('code', false, false);
+                if (!\mindstellar\security\AdminTotp::verifyAny($pending['id'], $code)) {
+                    \mindstellar\security\LoginThrottle::recordFailure('admin-2fa', 'admin-' . $pending['id']);
+                    osc_add_flash_error_message(_m('That code is not valid. Try again.'), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login&action=2fa');
+                }
+
+                $admin = Admin::newInstance()->findByPrimaryKey($pending['id']);
+                if (!$admin) {
+                    \mindstellar\security\AdminTotp::clearPending();
+                    osc_add_flash_error_message(_m('Login failed. Please try again.'), 'admin');
+                    $this->redirectTo(osc_admin_base_url(true) . '?page=login');
+                }
+
+                \mindstellar\security\LoginThrottle::clear('admin-2fa', 'admin-' . $pending['id']);
+                $remember = $pending['remember'] && !$pending['from_cookie'];
+                $redirect = $pending['redirect'] !== '' ? $pending['redirect'] : osc_admin_base_url();
+                \mindstellar\security\AdminTotp::establishSession($admin, $pending['locale'], $remember);
+                $this->redirectTo($redirect);
+                break;
+            case ('2fa_cancel'):
+                \mindstellar\security\AdminTotp::clearPending();
+                \mindstellar\security\AdminTotp::clearRememberCookies();
+                $this->redirectTo(osc_admin_base_url(true) . '?page=login');
                 break;
             case ('recover'):        // form to recover the password (in this case we have the form in /gui/)
                 View::newInstance()->_exportVariableToView('login_admin_page_title', osc_page_title().' &raquo;'. __('Lost your password'));
@@ -243,6 +279,7 @@ class CAdminLogin extends AdminBaseModel
                         ),
                         array('pk_i_id' => $admin['pk_i_id'])
                     );
+                    \mindstellar\security\AdminTotp::clearLastIp($admin['pk_i_id']);
                     osc_add_flash_ok_message(_m('The password has been changed'), 'admin');
                     $this->redirectTo(osc_admin_base_url(true) . '?page=login');
                 } else {
@@ -254,6 +291,15 @@ class CAdminLogin extends AdminBaseModel
                 }
                 break;
             default:
+                if (\mindstellar\security\AdminTotp::pending() !== null) {
+                    View::newInstance()->_exportVariableToView(
+                        'login_admin_page_title',
+                        osc_page_title() . ' &raquo;' . __('Two-factor authentication')
+                    );
+                    View::newInstance()->_exportVariableToView('login_admin_form', 'gui/login.php');
+                    $this->doView();
+                    break;
+                }
                 //osc_run_hook( 'init_admin' );
                 View::newInstance()->_exportVariableToView('login_admin_page_title', osc_page_title().' &raquo;'. __('Log in'));
                 View::newInstance()->_exportVariableToView('login_admin_form', 'gui/login.php');

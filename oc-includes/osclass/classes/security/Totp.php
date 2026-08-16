@@ -72,7 +72,7 @@ class Totp
      */
     public static function base32Decode($b32)
     {
-        $b32    = strtoupper(preg_replace('/[^A-Z2-7]/', '', (string)$b32));
+        $b32    = preg_replace('/[^A-Z2-7]/', '', strtoupper((string)$b32));
         $binary = '';
         $len    = strlen($b32);
         for ($i = 0; $i < $len; $i++) {

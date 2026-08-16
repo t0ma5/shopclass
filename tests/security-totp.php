@@ -27,9 +27,11 @@ harness_section('Totp: base32 round-trip');
 
 $raw = 'Hello!';
 $b32 = Totp::base32Encode($raw);
-pin('known ASCII encodes to JBSWY3DPEHPK3PXP', 'JBSWY3DPEHPK3PXP', $b32);
+// RFC 4648 unpadded: 6 bytes → 10 symbols. (The folklore Google-demo
+// string JBSWY3DPEHPK3PXP is a different 10-byte payload, not "Hello!".)
+pin('known ASCII encodes to JBSWY3DPEE', 'JBSWY3DPEE', $b32);
 pin('that encoding decodes back', $raw, Totp::base32Decode($b32));
-pin('lowercase and spaces are ignored on decode', $raw, Totp::base32Decode('jbsw y3dp ehpk 3pxp'));
+pin('lowercase and spaces are ignored on decode', $raw, Totp::base32Decode('jbsw y3dp ee'));
 
 $secret = Totp::randomSecret();
 check('randomSecret is non-empty base32', $secret !== '' && preg_match('/^[A-Z2-7]+$/', $secret) === 1);

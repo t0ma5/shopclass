@@ -132,6 +132,38 @@ class Totp
     }
 
     /**
+     * Matching TOTP time-step, or null. Used to reject a code already consumed
+     * in this window.
+     *
+     * @param string   $secretB32
+     * @param string   $code
+     * @param int|null $timestamp
+     *
+     * @return int|null
+     */
+    public static function matchingSlice($secretB32, $code, $timestamp = null)
+    {
+        $code = preg_replace('/\s+/', '', (string)$code);
+        if (!preg_match('/^[0-9]{' . self::DIGITS . '}$/', $code)) {
+            return null;
+        }
+        $secretBin = self::base32Decode($secretB32);
+        if ($secretBin === '') {
+            return null;
+        }
+        $when  = $timestamp === null ? time() : (int)$timestamp;
+        $slice = (int)floor($when / self::PERIOD);
+        for ($i = -self::WINDOW; $i <= self::WINDOW; $i++) {
+            $step = $slice + $i;
+            if (hash_equals(self::hotp($secretBin, $step), $code)) {
+                return $step;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param string   $secretB32
      * @param string   $code
      * @param int|null $timestamp unix time the code is checked against
@@ -140,23 +172,7 @@ class Totp
      */
     public static function verify($secretB32, $code, $timestamp = null)
     {
-        $code = preg_replace('/\s+/', '', (string)$code);
-        if (!preg_match('/^[0-9]{' . self::DIGITS . '}$/', $code)) {
-            return false;
-        }
-        $secretBin = self::base32Decode($secretB32);
-        if ($secretBin === '') {
-            return false;
-        }
-        $when  = $timestamp === null ? time() : (int)$timestamp;
-        $slice = (int)floor($when / self::PERIOD);
-        for ($i = -self::WINDOW; $i <= self::WINDOW; $i++) {
-            if (hash_equals(self::hotp($secretBin, $slice + $i), $code)) {
-                return true;
-            }
-        }
-
-        return false;
+        return self::matchingSlice($secretB32, $code, $timestamp) !== null;
     }
 
     /**

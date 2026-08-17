@@ -12,25 +12,35 @@
 namespace mindstellar\security;
 
 use Cookie;
-use OpensslCryptor\Cryptor;
 use Params;
 use Session;
 
 /**
  * Optional authenticator-app 2FA for oc-admin, challenged only when the login IP changes.
  *
- * Enrollment is per administrator, on their own profile. A stored last-verified
- * IP is the gate: the same address signs in with password (and captcha) alone;
- * a different address, or a blank last IP, must present a TOTP or a backup code
- * before the session is established. Remember-me from a new IP takes the same
- * path — the cookie is not treated as a full login until the code succeeds.
+ * This is a weaker guarantee than prompting on every login: it is a deliberate
+ * UX choice (password-only on the usual address, code when the address moves).
+ * It is not a substitute for always-on 2FA.
  *
- * Secrets are encrypted with the install signing key ({@see SigningKey}) so they
- * are not sitting in t_admin_2fa as base32. Backup codes are stored hashed and
- * consumed on use. A password change clears the last IP, so the next sign-in
- * from anywhere has to 2FA once.
+ * currentIp() is REMOTE_ADDR only, same rule as {@see LoginThrottle}. A
+ * forwarded-for header is client-controlled. Behind Cloudflare or any reverse
+ * proxy that does not restore the visitor address onto REMOTE_ADDR, every admin
+ * resolves to the same proxy IP: after the first successful challenge, the
+ * stored last IP matches forever and 2FA becomes a no-op for later password
+ * theft from that same edge. Shared NAT (cafes, CGNAT) re-prompts because the
+ * address keeps changing.
  *
- * The table arrives with migration 0029 / struct.sql. If it is not there yet
+ * Enrollment is per administrator, on their own profile. Remember-me from a new
+ * IP takes the same path — the cookie is not treated as a full login until the
+ * code succeeds. A consumed TOTP time-step is recorded so the same code cannot
+ * be replayed inside the verification window.
+ *
+ * Secrets are AES-256-GCM (12-byte IV, 16-byte tag, base64 in the VARCHAR)
+ * keyed from {@see SigningKey}. Backup codes are stored hashed and consumed
+ * on use. A password change clears the last IP, so the next sign-in from
+ * anywhere has to 2FA once.
+ *
+ * The table arrives with migration 0036 / struct.sql. If it is not there yet
  * (files deployed, upgrade not run) every lookup fails open: 2FA is treated as
  * off, so the administrator who has to start the upgrade is not locked out.
  */
@@ -47,9 +57,8 @@ class AdminTotp
     }
 
     /**
-     * REMOTE_ADDR only, same rule as {@see LoginThrottle}: a forwarded-for header
-     * is written by the client. An install behind a proxy needs the proxy to set
-     * REMOTE_ADDR.
+     * REMOTE_ADDR only, same rule as {@see LoginThrottle}. See the class comment
+     * for what that means behind a reverse proxy.
      *
      * @return string
      */
@@ -173,7 +182,7 @@ class AdminTotp
     /**
      * @param string $plain base32 TOTP secret
      *
-     * @return string ciphertext, or empty on failure
+     * @return string base64(IV . tag . ciphertext), or empty on failure
      */
     public static function encrypt($plain)
     {
@@ -181,15 +190,27 @@ class AdminTotp
         if ($plain === '') {
             return '';
         }
-        try {
-            return Cryptor::Encrypt($plain, self::cryptoKey(), 0);
-        } catch (\Throwable $e) {
+        $iv  = random_bytes(12);
+        $tag = '';
+        $ciphertext = openssl_encrypt(
+            $plain,
+            'aes-256-gcm',
+            self::cryptoKey(),
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag,
+            '',
+            16
+        );
+        if ($ciphertext === false || strlen($tag) !== 16) {
             return '';
         }
+
+        return base64_encode($iv . $tag . $ciphertext);
     }
 
     /**
-     * @param string $stored
+     * @param string $stored base64 from encrypt()
      *
      * @return string
      */
@@ -199,11 +220,20 @@ class AdminTotp
         if ($stored === '') {
             return '';
         }
-        try {
-            return (string)Cryptor::Decrypt($stored, self::cryptoKey(), 0);
-        } catch (\Throwable $e) {
+        $raw = base64_decode($stored, true);
+        if ($raw === false || strlen($raw) <= 28) {
             return '';
         }
+        $plain = openssl_decrypt(
+            substr($raw, 28),
+            'aes-256-gcm',
+            self::cryptoKey(),
+            OPENSSL_RAW_DATA,
+            substr($raw, 0, 12),
+            substr($raw, 12, 16)
+        );
+
+        return $plain === false ? '' : (string)$plain;
     }
 
     /**
@@ -297,8 +327,17 @@ class AdminTotp
             return false;
         }
         $secret = self::decrypt($row['s_secret']);
-        if ($secret !== '' && Totp::verify($secret, $code)) {
-            return true;
+        if ($secret !== '') {
+            $step = Totp::matchingSlice($secret, $code);
+            if ($step !== null) {
+                $last = isset($row['i_last_totp_step']) ? (int)$row['i_last_totp_step'] : 0;
+                if ($last > 0 && $step <= $last) {
+                    return false;
+                }
+                self::save($adminId, array('i_last_totp_step' => $step));
+
+                return true;
+            }
         }
 
         return self::consumeBackupCode($adminId, $code);

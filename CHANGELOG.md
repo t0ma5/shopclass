@@ -61,9 +61,12 @@ most of them do not use — so it now goes in the same place as any other third-
   committed, so a plugin's own database work is never rolled back with a failed delete.
 - Optional authenticator-app 2FA for administrators. A code is required only when
   the sign-in IP differs from the last verified address; the same IP signs in with
-  password alone. Enrollment is on Your Profile, with backup codes shown once.
+  password alone. That limit is stated in the admin UI: it is weaker than always-on
+  2FA, and behind a reverse proxy that does not restore REMOTE_ADDR it will not
+  re-prompt. Enrollment is on Your Profile, with backup codes shown once.
   Remember-me from a new IP takes the same path. Changing the password clears the
-  stored IP so the next sign-in must 2FA.
+  stored IP so the next sign-in must 2FA. Secrets are AES-256-GCM (base64 in the
+  text column). A used TOTP time-step cannot be replayed inside the window.
 
 ### Breaking
 

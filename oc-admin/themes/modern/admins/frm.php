@@ -152,7 +152,7 @@ osc_current_admin_theme_path('parts/header.php'); ?>
         ?>
     <div class="settings-user" style="margin-top:2rem;">
         <h2 class="render-title"><?php _e('Two-factor authentication'); ?></h2>
-        <p><?php _e('When this is on, a new IP address must confirm a code from your authenticator app. The same IP can sign in with password only.'); ?></p>
+        <p><?php _e('When this is on, a code from your authenticator app is required when you sign in from an IP address that is not the last one that passed 2FA. Signing in from the same IP skips the code. That is weaker than prompting on every login: it is a convenience gate, not always-on 2FA. Behind a reverse proxy, Shopclass sees the proxy address unless the proxy restores the visitor IP onto REMOTE_ADDR — in that case 2FA will not re-prompt after the first success. Shared NAT (cafes, mobile) will re-prompt because the address keeps changing.'); ?></p>
         <?php if ($totpBackup !== '') { ?>
             <div class="flashmessage flashmessage-ok" style="display:block;">
                 <p><strong><?php _e('Backup codes (save these now)'); ?></strong></p>

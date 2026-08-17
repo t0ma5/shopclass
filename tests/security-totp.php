@@ -52,6 +52,7 @@ $now       = 1111111109; // RFC 6238 test time; T = floor(1111111109/30) = 37037
 $code      = Totp::at($secretB32, $now);
 check('at() returns 6 digits', preg_match('/^[0-9]{6}$/', $code) === 1);
 check('current step verifies', Totp::verify($secretB32, $code, $now));
+check('matchingSlice returns the current step', Totp::matchingSlice($secretB32, $code, $now) === (int)floor($now / Totp::PERIOD));
 check('previous step verifies inside the window', Totp::verify($secretB32, Totp::at($secretB32, $now - 30), $now));
 check('next step verifies inside the window', Totp::verify($secretB32, Totp::at($secretB32, $now + 30), $now));
 check('two steps away does not verify', Totp::verify($secretB32, Totp::at($secretB32, $now - 60), $now) === false);

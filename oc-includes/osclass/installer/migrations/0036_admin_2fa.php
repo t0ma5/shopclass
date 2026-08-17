@@ -15,9 +15,9 @@ use mindstellar\migration\MigrationInterface;
  * Add t_admin_2fa, the per-administrator TOTP enrollment row.
  *
  * Authenticator-app 2FA is optional and is only challenged when the sign-in
- * address differs from the last verified one. The secret lives here encrypted,
- * not on t_admin, so an administrator who never enrolls has no extra column and
- * a deleted administrator takes the row with them (ON DELETE CASCADE).
+ * address differs from the last verified one. The secret is AES-256-GCM
+ * ciphertext, base64-encoded into a utf8mb4 VARCHAR. A deleted administrator
+ * takes the row with them (ON DELETE CASCADE).
  *
  * Idempotent: CREATE TABLE IF NOT EXISTS.
  */
@@ -33,6 +33,7 @@ return new class () implements MigrationInterface {
             . ' s_secret VARCHAR(255) NOT NULL DEFAULT \'\','
             . ' b_enabled TINYINT(1) NOT NULL DEFAULT 0,'
             . ' s_last_ip VARCHAR(45) NOT NULL DEFAULT \'\','
+            . ' i_last_totp_step INT NOT NULL DEFAULT 0,'
             . ' s_backup_codes TEXT NULL,'
             . ' dt_enrolled DATETIME NULL,'
             . ' dt_last_verify DATETIME NULL,'
@@ -43,4 +44,4 @@ return new class () implements MigrationInterface {
     }
 };
 
-/* file end: ./oc-includes/osclass/installer/migrations/0029_admin_2fa.php */
+/* file end: ./oc-includes/osclass/installer/migrations/0036_admin_2fa.php */

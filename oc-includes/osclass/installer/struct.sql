@@ -142,6 +142,7 @@ CREATE TABLE /*TABLE_PREFIX*/t_admin_2fa (
     s_secret VARCHAR(255) NOT NULL DEFAULT '',
     b_enabled TINYINT(1) NOT NULL DEFAULT 0,
     s_last_ip VARCHAR(45) NOT NULL DEFAULT '',
+    i_last_totp_step INT NOT NULL DEFAULT 0,
     s_backup_codes TEXT NULL,
     dt_enrolled DATETIME NULL,
     dt_last_verify DATETIME NULL,
